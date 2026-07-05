@@ -102,6 +102,9 @@ function TypingIndicator() {
   );
 }
 
+const CONVERSATIONS_KEY = "tt_rewired_conversations";
+const CURRENT_SESSION_KEY = "tt_rewired_current";
+
 export default function RewiredCoach() {
   const [screen, setScreen] = useState("home");
   const [mode, setMode] = useState(null);
@@ -109,8 +112,18 @@ export default function RewiredCoach() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
+  const [viewingConvo, setViewingConvo] = useState(null);
   const [savedNarratives, setSavedNarratives] = useState(() => {
     try { return JSON.parse(localStorage.getItem("tt_narratives") || "[]"); } catch { return []; }
+  });
+  const [conversations, setConversations] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CONVERSATIONS_KEY) || "[]"); } catch { return []; }
+  });
+  const [hasResumableSession, setHasResumableSession] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CURRENT_SESSION_KEY) || "null");
+      return !!(saved && saved.messages && saved.messages.length > 1);
+    } catch { return false; }
   });
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -118,6 +131,47 @@ export default function RewiredCoach() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // Autosave the active session as the conversation progresses, so a refresh
+  // or accidental close never loses where they were.
+  useEffect(() => {
+    if (screen !== "chat" || !mode) return;
+    try {
+      localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify({ mode, messages, history, updatedAt: Date.now() }));
+    } catch {}
+  }, [messages, history, mode, screen]);
+
+  function resumeSession() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CURRENT_SESSION_KEY) || "null");
+      if (saved && saved.mode) {
+        setMode(saved.mode);
+        setMessages(saved.messages || []);
+        setHistory(saved.history || []);
+        setScreen("chat");
+        setTimeout(() => inputRef.current?.focus(), 100);
+      }
+    } catch {}
+  }
+
+  function archiveCurrentConversation() {
+    if (!mode || messages.length <= 1) return;
+    const entry = { id: Date.now(), mode, messages, updatedAt: Date.now() };
+    const updated = [entry, ...conversations].slice(0, 100);
+    setConversations(updated);
+    try { localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(updated)); } catch {}
+  }
+
+  function deleteConversation(id) {
+    const updated = conversations.filter(c => c.id !== id);
+    setConversations(updated);
+    try { localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(updated)); } catch {}
+  }
+
+  function clearAllConversations() {
+    setConversations([]);
+    try { localStorage.removeItem(CONVERSATIONS_KEY); } catch {}
+  }
 
   function saveNarrative(text) {
     const lines = text.split("\n").filter(l => l.trim().match(/^(\d+\.\s*)?I am/i));
@@ -140,6 +194,7 @@ export default function RewiredCoach() {
     setMessages([intro]);
     setHistory([{ role: "assistant", content: MODES[m].intro }]);
     setScreen("chat");
+    setHasResumableSession(false);
     setTimeout(() => inputRef.current?.focus(), 100);
   }
 
@@ -174,6 +229,9 @@ export default function RewiredCoach() {
   }
 
   function reset() {
+    archiveCurrentConversation();
+    try { localStorage.removeItem(CURRENT_SESSION_KEY); } catch {}
+    setHasResumableSession(false);
     setScreen("home");
     setMode(null);
     setMessages([]);
@@ -232,11 +290,24 @@ export default function RewiredCoach() {
             ))}
           </div>
 
-          {savedNarratives.length > 0 && (
-            <button onClick={() => setScreen("saved")} style={{ marginTop: "24px", background: "none", border: `1px solid ${PURPLE}44`, borderRadius: "20px", color: LIGHT_PURPLE, fontSize: "12px", padding: "8px 20px", cursor: "pointer", fontFamily: "Arial" }}>
-              view my saved identity statements ({savedNarratives.length})
+          {hasResumableSession && (
+            <button onClick={resumeSession} style={{ marginTop: "24px", background: `${PURPLE}22`, border: `1px solid ${PURPLE}66`, borderRadius: "20px", color: LIGHT_PURPLE, fontSize: "12px", padding: "8px 20px", cursor: "pointer", fontFamily: "Arial" }}>
+              continue where you left off
             </button>
           )}
+
+          <div style={{ display: "flex", gap: "12px", marginTop: hasResumableSession ? "12px" : "24px", flexWrap: "wrap", justifyContent: "center" }}>
+            {savedNarratives.length > 0 && (
+              <button onClick={() => setScreen("saved")} style={{ background: "none", border: `1px solid ${PURPLE}44`, borderRadius: "20px", color: LIGHT_PURPLE, fontSize: "12px", padding: "8px 20px", cursor: "pointer", fontFamily: "Arial" }}>
+                view my saved identity statements ({savedNarratives.length})
+              </button>
+            )}
+            {conversations.length > 0 && (
+              <button onClick={() => setScreen("history")} style={{ background: "none", border: `1px solid ${PURPLE}44`, borderRadius: "20px", color: LIGHT_PURPLE, fontSize: "12px", padding: "8px 20px", cursor: "pointer", fontFamily: "Arial" }}>
+                past conversations ({conversations.length})
+              </button>
+            )}
+          </div>
 
           <p style={{ marginTop: "40px", color: "#44446A", fontSize: "11px", fontFamily: "Arial, sans-serif", textAlign: "center" }}>
             Thought Therapy by Suron · hello@thoughttherapy.co
@@ -258,6 +329,48 @@ export default function RewiredCoach() {
                 {s}
               </div>
             ))}
+          </div>
+        </div>
+      ) : screen === "history" ? (
+        <div style={{ flex: 1, padding: "24px 20px", overflowY: "auto" }}>
+          <div style={{ maxWidth: "640px", margin: "0 auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+              <span style={{ color: LIGHT_PURPLE, fontSize: "13px", fontFamily: "Arial", letterSpacing: "1px" }}>PAST CONVERSATIONS</span>
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button onClick={clearAllConversations} style={{ background: "none", border: "none", color: MUTED, fontSize: "12px", cursor: "pointer", fontFamily: "Arial" }}>clear all</button>
+                <button onClick={() => setScreen("home")} style={{ background: "none", border: "none", color: MUTED, fontSize: "12px", cursor: "pointer", fontFamily: "Arial" }}>← back</button>
+              </div>
+            </div>
+            {conversations.length === 0 ? (
+              <p style={{ color: MUTED, fontSize: "13px", fontFamily: "Arial" }}>No saved conversations yet.</p>
+            ) : conversations.map(c => (
+              <button key={c.id} onClick={() => { setViewingConvo(c); setScreen("viewConvo"); }} style={{ width: "100%", textAlign: "left", background: CARD, border: `1px solid #33335A`, borderRadius: "12px", padding: "16px 18px", marginBottom: "12px", cursor: "pointer" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: OFF_WHITE, fontSize: "14px" }}>{MODES[c.mode]?.sub || c.mode}</span>
+                  <span style={{ color: MUTED, fontSize: "11px", fontFamily: "Arial" }}>{new Date(c.updatedAt).toLocaleDateString()}</span>
+                </div>
+                <div style={{ color: MUTED, fontSize: "12px", marginTop: "6px", fontFamily: "Arial", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.messages[c.messages.length - 1]?.content}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : screen === "viewConvo" && viewingConvo ? (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 65px)" }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: "24px 20px 8px" }}>
+            <div style={{ maxWidth: "640px", margin: "0 auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <span style={{ color: LIGHT_PURPLE, fontSize: "13px", fontFamily: "Arial", letterSpacing: "1px" }}>{MODES[viewingConvo.mode]?.sub?.toUpperCase() || ""}</span>
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <button onClick={() => { deleteConversation(viewingConvo.id); setScreen("history"); }} style={{ background: "none", border: "none", color: MUTED, fontSize: "12px", cursor: "pointer", fontFamily: "Arial" }}>delete</button>
+                  <button onClick={() => setScreen("history")} style={{ background: "none", border: "none", color: MUTED, fontSize: "12px", cursor: "pointer", fontFamily: "Arial" }}>← back</button>
+                </div>
+              </div>
+              {viewingConvo.messages.map((m, i) => (
+                <Message key={i} role={m.role} content={m.content} />
+              ))}
+            </div>
           </div>
         </div>
       ) : (
