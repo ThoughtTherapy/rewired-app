@@ -104,8 +104,18 @@ function TypingIndicator() {
 
 const CONVERSATIONS_KEY = "tt_rewired_conversations";
 const CURRENT_SESSION_KEY = "tt_rewired_current";
+const UNLOCK_KEY = "tt_rewired_unlocked";
+
+// Change this to whatever code you give customers on the Payhip download page.
+const ACCESS_CODE = "REWIRED26";
 
 export default function RewiredCoach() {
+  const [unlocked, setUnlocked] = useState(() => {
+    try { return localStorage.getItem(UNLOCK_KEY) === "true"; } catch { return false; }
+  });
+  const [codeInput, setCodeInput] = useState("");
+  const [codeError, setCodeError] = useState("");
+
   const [screen, setScreen] = useState("home");
   const [mode, setMode] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -237,6 +247,41 @@ export default function RewiredCoach() {
     setMessages([]);
     setHistory([]);
     setInput("");
+  }
+
+  function tryUnlock() {
+    if (codeInput.trim().toUpperCase() === ACCESS_CODE.toUpperCase()) {
+      try { localStorage.setItem(UNLOCK_KEY, "true"); } catch {}
+      setUnlocked(true);
+      setCodeError("");
+    } else {
+      setCodeError("That code doesn't match. Check your purchase page and try again.");
+    }
+  }
+
+  if (!unlocked) {
+    return (
+      <div style={{ minHeight: "100vh", background: DARK, fontFamily: "'Georgia', serif", color: OFF_WHITE, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px" }}>
+        <div style={{ maxWidth: "360px", width: "100%", textAlign: "center" }}>
+          <div style={{ color: LIGHT_PURPLE, fontSize: "13px", letterSpacing: "2px", fontFamily: "Arial", marginBottom: "12px" }}>RE-WIRED</div>
+          <p style={{ color: MUTED, fontSize: "14px", fontFamily: "Arial", marginBottom: "24px", lineHeight: 1.5 }}>
+            Enter the access code from your purchase page to continue. You'll only need to do this once on this device.
+          </p>
+          <input
+            type="text"
+            value={codeInput}
+            onChange={(e) => { setCodeInput(e.target.value); setCodeError(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") tryUnlock(); }}
+            placeholder="Access code"
+            style={{ width: "100%", padding: "12px 16px", borderRadius: "10px", border: `1px solid #33335A`, background: CARD, color: OFF_WHITE, fontSize: "15px", fontFamily: "Arial", textAlign: "center", marginBottom: "12px", boxSizing: "border-box" }}
+          />
+          {codeError && <p style={{ color: "#E08585", fontSize: "12px", fontFamily: "Arial", marginBottom: "12px" }}>{codeError}</p>}
+          <button onClick={tryUnlock} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "none", background: PURPLE, color: OFF_WHITE, fontSize: "14px", fontFamily: "Arial", cursor: "pointer" }}>
+            Unlock
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
