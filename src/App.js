@@ -61,7 +61,7 @@ const MODES = {
   },
   narrative: {
     id: "narrative",
-    label: "I need to reconnect with who I'm becoming",
+    label: "I need to connect with who I'm becoming",
     sub: "Build your identity narrative",
     icon: "✦",
     intro: "Let's build your narrative. This is the story you run alongside your behaviour, the internal voice that tells your brain who it's becoming. What are you working toward right now?",
